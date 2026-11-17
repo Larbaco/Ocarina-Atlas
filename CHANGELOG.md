@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-11-16
+
+### Fixed
+- **Lon Lon Ranch Gold Skulltula Swap (`src/lib/lichii-server.ts`, fixes [#34](https://github.com/antonioalvromero/Ocarina-Atlas/issues/34)):** Swapped the actor hashes for `lonlon-gs-02` (*Crate in the grotto south of the ranch*, `0x7d8ec14bdd1f6341n` / `...6343n`) and `lonlon-gs-04` (*Inside the stone tower*, `0x25e6072d4df023b3n` / `...23b1n`) in `KNOWN_SKULLTULA_HASH_MAP` so child stone-tower and adult grotto-crate Skulltulas mark accurately. *(Related: [#33](https://github.com/antonioalvromero/Ocarina-Atlas/issues/33) chest Heart Pieces were resolved in v2.2.1 and verified across all 6 `IsTreasureBoxOpen` flags.)*
+
 ## [2.2.1] - 2026-11-16
 
 ### Added

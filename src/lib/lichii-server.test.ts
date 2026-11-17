@@ -108,7 +108,7 @@ describe('Lichii environment config helpers', () => {
     expect(getLichiiPort({ LICHII_PORT: 'invalid' })).toBe(6545)
   })
 
-  it('checks LICHII_SAVE_DIR / FRITCHII_SAVE_DIR / CHEEZYEMU_SAVE_DIR / LONGSHOT_SAVE_DIR / RELINK_SAVE_DIR / TRIFORCE_SAVE_DIR before default APPDATA, XDG_DATA_HOME, and recomp save directories', () => {
+  it('checks LICHII_SAVE_DIR / FRITCHII_SAVE_DIR / CHEEZYEMU_SAVE_DIR / LONGSHOT_SAVE_DIR / RELINK_SAVE_DIR / TRIFORCE_SAVE_DIR / NX2SARIA_SAVE_DIR before default APPDATA, XDG_DATA_HOME, and recomp save directories', () => {
     const appData = path.join(os.tmpdir(), 'fake-appdata')
     const xdgDataHome = path.join(os.tmpdir(), 'fake-xdg-data')
     const fallbackXdgDataHome = path.join(os.homedir(), '.local', 'share')
@@ -118,6 +118,7 @@ describe('Lichii environment config helpers', () => {
     const explicitLongshot = path.join(os.tmpdir(), 'custom-longshot-saves')
     const explicitRelink = path.join(os.tmpdir(), 'custom-relink-saves')
     const explicitTriforce = path.join(os.tmpdir(), 'custom-triforce-saves')
+    const explicitNx2Saria = path.join(os.tmpdir(), 'custom-nx2saria-profile')
     const emulators = ['fritchii', 'lichii', 'eden', 'cheezyemu'] as const
     const appDataDefaults = emulators.map((emu) =>
       path.resolve(appData, emu, 'nand', 'user', 'save', '0000000000000000'),
@@ -161,6 +162,7 @@ describe('Lichii environment config helpers', () => {
         LONGSHOT_SAVE_DIR: explicitLongshot,
         RELINK_SAVE_DIR: explicitRelink,
         TRIFORCE_SAVE_DIR: explicitTriforce,
+        NX2SARIA_SAVE_DIR: explicitNx2Saria,
       }),
     ).toEqual([
       path.resolve(explicit),
@@ -169,6 +171,7 @@ describe('Lichii environment config helpers', () => {
       path.resolve(explicitLongshot),
       path.resolve(explicitRelink),
       path.resolve(explicitTriforce),
+      path.resolve(explicitNx2Saria),
       ...customXdgDirs,
     ])
   })
@@ -376,6 +379,47 @@ describe('Lichii environment config helpers', () => {
       expect(
         detectEmulatorFromPath(path.join(tmpRoot, 'Games', 'Triforce', 'user', 'save', uid, 'slot_00')),
       ).toBe('triforce')
+    } finally {
+      homeSpy.mockRestore()
+      fs.rmSync(tmpRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('supports NX2Saria <game>/profile/save/<32-hex-uid>/slot_00/caption.sav via NX2SARIA_SAVE_DIR', () => {
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nx2saria-save-test-'))
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(tmpRoot)
+    try {
+      const uid = '0123456789abcdef0123456789abcdef'
+      const appDataDir = path.join(tmpRoot, 'appdata')
+      const xdgDataDir = path.join(tmpRoot, 'xdg-data')
+      const profileDir = path.join(tmpRoot, 'game', 'profile')
+      const accountDir = path.join(profileDir, 'save', uid)
+      const slotDir = path.join(accountDir, 'slot_00')
+      fs.mkdirSync(slotDir, { recursive: true })
+      fs.mkdirSync(path.join(accountDir, 'slot_01'), { recursive: true })
+      fs.writeFileSync(path.join(slotDir, 'caption.sav'), Buffer.alloc(0x30))
+      fs.writeFileSync(path.join(accountDir, 'account.sav'), Buffer.alloc(0x10))
+      fs.writeFileSync(path.join(accountDir, 'option.sav'), Buffer.alloc(0x10))
+
+      // 1. NX2SARIA_SAVE_DIR may point at either the profile folder or its save folder
+      for (const saveDir of [profileDir, path.join(profileDir, 'save')]) {
+        const found = findLatestSaveSlotDir(
+          getCandidateSaveDirs({ APPDATA: appDataDir, XDG_DATA_HOME: xdgDataDir, NX2SARIA_SAVE_DIR: saveDir }),
+        )
+        expect(found?.dir).toBe(slotDir)
+      }
+
+      // 2. Slots under NX2SARIA_SAVE_DIR are labeled nx2saria; sibling folders and unset env are not
+      expect(detectEmulatorFromPath(slotDir, { NX2SARIA_SAVE_DIR: profileDir })).toBe('nx2saria')
+      expect(detectEmulatorFromPath(slotDir, { NX2SARIA_SAVE_DIR: ` ${path.join(profileDir, 'save')} ` })).toBe(
+        'nx2saria',
+      )
+      expect(
+        detectEmulatorFromPath(path.join(tmpRoot, 'game', 'profile2', 'save', uid, 'slot_00'), {
+          NX2SARIA_SAVE_DIR: profileDir,
+        }),
+      ).toBeUndefined()
+      expect(detectEmulatorFromPath(slotDir, {})).toBeUndefined()
     } finally {
       homeSpy.mockRestore()
       fs.rmSync(tmpRoot, { recursive: true, force: true })

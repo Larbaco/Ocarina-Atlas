@@ -52,7 +52,8 @@ function getDefaultRecompSaveDirs(): string[] {
 
 /**
  * Returns candidate emulator save root directories in priority order:
- * explicit LICHII_SAVE_DIR / FRITCHII_SAVE_DIR / CHEEZYEMU_SAVE_DIR / LONGSHOT_SAVE_DIR / RELINK_SAVE_DIR / TRIFORCE_SAVE_DIR overrides first,
+ * explicit LICHII_SAVE_DIR / FRITCHII_SAVE_DIR / CHEEZYEMU_SAVE_DIR / LONGSHOT_SAVE_DIR / RELINK_SAVE_DIR / TRIFORCE_SAVE_DIR /
+ * NX2SARIA_SAVE_DIR overrides first,
  * then default %APPDATA%\{fritchii,lichii,eden,cheezyemu}\nand\user\save\0000000000000000,
  * Linux $XDG_DATA_HOME/{fritchii,lichii,eden,cheezyemu}/nand/user/save/0000000000000000 (or ~/.local/share),
  * and Longshot/Hookshot/ProjectReLink/Triforce user paths.
@@ -76,6 +77,7 @@ export function getCandidateSaveDirs(env: NodeJS.ProcessEnv = process.env): stri
     env.LONGSHOT_SAVE_DIR,
     env.RELINK_SAVE_DIR,
     env.TRIFORCE_SAVE_DIR,
+    env.NX2SARIA_SAVE_DIR,
   ]) {
     const explicit = explicitRaw?.trim()
     if (explicit) {
@@ -1420,9 +1422,22 @@ function collectSlotsInCandidateRoot(rootDir: string): string[] {
   return Array.from(slots)
 }
 
-/** Detects which emulator owns a save slot path based on its path segments. */
-export function detectEmulatorFromPath(dirPath: string): EmulatorKind | undefined {
-  const segments = path.resolve(dirPath).toLowerCase().split(path.sep)
+/**
+ * Detects which emulator owns a save slot path: paths under NX2SARIA_SAVE_DIR are NX2Saria,
+ * otherwise the path segments decide.
+ */
+export function detectEmulatorFromPath(
+  dirPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): EmulatorKind | undefined {
+  const resolved = path.resolve(dirPath).toLowerCase()
+  const nx2sariaRaw = env.NX2SARIA_SAVE_DIR?.trim()
+  if (nx2sariaRaw) {
+    // NX2Saria saves live in its game folder, whose name is not recognizable
+    const nx2sariaRoot = path.resolve(nx2sariaRaw).toLowerCase()
+    if (resolved === nx2sariaRoot || resolved.startsWith(nx2sariaRoot + path.sep)) return 'nx2saria'
+  }
+  const segments = resolved.split(path.sep)
   for (const emu of DEFAULT_EMULATOR_SAVE_ROOTS) {
     if (segments.includes(emu)) return emu
   }

@@ -18,6 +18,7 @@ import {
   getLichiiHost,
   getLichiiPort,
   getLichiiTelemetryState,
+  getMinGuestHeapPtr,
   GHOST_SHOP_COUPON_BOTTLE_ITEM_ID,
   GHOST_SHOP_COUPON_NUM_HASH,
   isValidSub36Buffer,
@@ -1759,6 +1760,7 @@ describe('Longshot live .bss telemetry resolution (getLichiiTelemetryState)', ()
     mainBase: bigint,
     regions: Array<{ base: bigint; buf: Buffer }>,
     fn: (info: { searchPatterns: string[] }) => Promise<void>,
+    emulator = 'longshot',
   ): Promise<void> {
     const serverSockets = new Set<net.Socket>()
     const searchPatterns: string[] = []
@@ -1787,7 +1789,7 @@ describe('Longshot live .bss telemetry resolution (getLichiiTelemetryState)', ()
                   result: {
                     powered_on: true,
                     program_id: '0400486024DEC000',
-                    emulator: 'longshot',
+                    emulator,
                   },
                 }) + '\n',
               )
@@ -1953,6 +1955,69 @@ describe('Longshot live .bss telemetry resolution (getLichiiTelemetryState)', ()
       expect(state.authoritativeBottles).toBe(true)
       expect(searchPatterns).toEqual([MAIN_MOD0_PATTERN_HEX])
     })
+  })
+
+  it('accepts NX2Saria heap pointers above 4 GiB only while status reports emulator: "nx2saria"', async () => {
+    const mainBase = 0x7000000000n
+    const regions = createLongshotMemoryRegions({
+      mainBase,
+      subSingletonPtr: 0x130100000n,
+      pObjPtr: 0x130200000n,
+      subArrPtr: 0x130300000n,
+      sub7Ptr: 0x130400000n,
+      sub23Ptr: 0x130500000n,
+      sub36Ptr: 0x130600000n,
+      gdmPtr: 0x131000000n,
+      intEntriesPtr: 0x131100000n,
+      intHashTablePtr: 0x131200000n,
+      boolEntriesPtr: 0x131300000n,
+      boolHashTablePtr: 0x131400000n,
+      masterTablePtr: 0x132000000n,
+      scenePath: 'Work/Banc/Scene/KokiriForest/KokiriForest.bcett.json',
+      x: 0.3,
+      y: 12.5,
+      z: -5.5,
+      skulltulaCount: 1,
+      couponCount: 499,
+      collectedSkulltulaIds: new Set(['kokiri-gs-01']),
+      collectedHeartContainerIds: new Set(),
+      collectedMasterHeartPieceIds: new Set(),
+      collectedBoolHashes: new Set(),
+    })
+
+    await withMockLongshotRpcServer(
+      mainBase,
+      regions,
+      async () => {
+        const state = await getLichiiTelemetryState()
+        expect(state.emulator).toBe('nx2saria')
+        expect(state.source).toBe('memory')
+        expect(state.scene).toBe('KokiriForest')
+        expect(state.skulltulaCount).toBe(1)
+        expect(state.collectedSkulltulaIds).toEqual(['kokiri-gs-01'])
+      },
+      'nx2saria',
+    )
+
+    // The floor follows each status response, so other emulators still reject these pointers
+    await withMockLongshotRpcServer(mainBase, regions, async () => {
+      const state = await getLichiiTelemetryState()
+      expect(state.emulator).toBe('longshot')
+      expect(state.source).not.toBe('memory')
+    })
+  })
+})
+
+describe('getMinGuestHeapPtr', () => {
+  it('lowers the guest heap pointer floor to 4 GiB only for nx2saria', () => {
+    expect(getMinGuestHeapPtr('nx2saria')).toBe(0x100000000n)
+    for (const emulator of ['longshot', 'relink', 'triforce', 'cheezyemu', 'fritchii', 'lichii', 'eden']) {
+      expect(getMinGuestHeapPtr(emulator)).toBe(0x1000000000n)
+    }
+    expect(getMinGuestHeapPtr(undefined)).toBe(0x1000000000n)
+    expect(getMinGuestHeapPtr(null)).toBe(0x1000000000n)
+    expect(getMinGuestHeapPtr('NX2Saria')).toBe(0x1000000000n)
+    expect(getMinGuestHeapPtr(42)).toBe(0x1000000000n)
   })
 })
 
